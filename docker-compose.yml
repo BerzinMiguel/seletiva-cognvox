@@ -1,0 +1,88 @@
+# ==============================================================================
+# ORGANIZAÇÃO DE CONTAINERS 
+# ==============================================================================
+# Este arquivo define toda a arquitetura do sistema.
+
+version: '3.8'
+
+services:
+  # ----------------------------------------------------------------------------
+  #  BANCO DE DADOS 
+  # ----------------------------------------------------------------------------
+  db:
+    # Usa a imagem oficial do MySQL versão 8.0 
+    image: mysql:8.0
+    container_name: cognvox_db
+    
+    # COMANDO DE INICIALIZAÇÃO PERSONALIZADO:
+    # 1. --default-authentication-plugin=mysql_native_password:
+    #    Corrige problemas de conexão com drivers antigos ou bibliotecas Python simples.
+    # 2. --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci:
+    #    CRUCIAL: Garante suporte total a acentos (ç, ã) e Emojis no banco desde o nascimento.
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    
+    # Se o container cair, o Docker tenta reiniciá-lo automaticamente
+    restart: always
+    
+    # Variáveis de ambiente injetadas dentro do container 
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: cognvox 
+    
+    # Mapeamento de Portas 
+    ports:
+      - "3307:3306"
+    
+    # Persistência de Dados e Scripts Iniciais
+    volumes:
+      # Copia o script SQL local para dentro do container.
+      # O MySQL executa automaticamente qualquer .sql nesta pasta na primeira vez que inicia.
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      
+      # Persistência 
+      # para a pasta de dados do container. Isso garante que seus dados NÃO SEJAM APAGADOS
+      - mysql_data:/var/lib/mysql
+
+  # ----------------------------------------------------------------------------
+  # BACKEND 
+  # ----------------------------------------------------------------------------
+  backend:
+    # Constrói a imagem usando o Dockerfile na pasta ./backend
+    build: ./backend
+    container_name: cognvox_backend
+    restart: always
+    
+    # Mapeamento: Acesso via http://localhost:5000
+    ports:
+      - "5000:5000"
+    
+    environment:
+      # String de Conexão
+      # NOTA IMPORTANTE: O host é "db", não "localhost".
+      # O Docker cria uma rede interna onde o nome do serviço ("db") vira o endereço IP.
+      DATABASE_URL: mysql+pymysql://root:root@db/cognvox?charset=utf8mb4
+      JWT_SECRET_KEY: "super_segredo_cognvox_2026"
+    
+    # Ordem de Inicialização: O backend só tenta iniciar depois que o serviço 'db' foi criado.
+    depends_on:
+      - db
+
+  # ----------------------------------------------------------------------------
+  # FRONTEND (
+  # ----------------------------------------------------------------------------
+  frontend:
+    # Constrói usando o Dockerfile na pasta ./frontend
+    build: ./frontend
+    container_name: cognvox_frontend
+    
+    # Mapeamento: Acesso via http://localhost (Porta 80 é a padrão da web)
+    ports:
+      - "80:80"
+    
+    # Garante que o frontend suba por último 
+    depends_on:
+      - backend
+
+# Definição dos Volumes Globais
+volumes:
+  mysql_data: # Cria um uma memoria gerenciada pelo Docker para salvar os dados do banco.
